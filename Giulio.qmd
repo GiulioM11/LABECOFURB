@@ -1,0 +1,305 @@
+---
+title: "Giulio Maiolino"
+format: html
+editor: visual
+---
+
+```{r}
+#| label: load-packages
+#| include: false
+
+library(WDI)
+library(ggplot2)
+library(dplyr)
+library(scales)
+library(viridis)
+library(ggrepel)
+
+options(scipen = 999) # REMOVER A NOT. CIENT.
+# DADOS EM PAINEL
+
+dadosreceipt <- WDI(country = 'all', indicator = 'ST.INT.RCPT.CD')
+
+# Filtrar países válidos
+paises_lista <- WDI_data$country %>%
+  filter(region != "Aggregates") %>%
+  pull(iso2c)
+
+# Limpar e preparar dados
+dados_limpos <- dadosreceipt %>%
+  filter(iso2c %in% paises_lista) %>%
+  filter(!is.na(ST.INT.RCPT.CD)) %>%
+  filter(year >= 1995 & year <= 2020)  # Considerando até 2020
+
+# Top 10 países por receita acumulada
+top_paises <- dados_limpos %>%
+  group_by(country) %>%
+  summarise(receita_total = sum(ST.INT.RCPT.CD, na.rm = TRUE)) %>%
+  arrange(desc(receita_total)) %>%
+  slice_head(n = 10)
+
+# Dados somente dos top 10
+dados_top_paises <- dados_limpos %>%
+  filter(country %in% top_paises$country)
+
+# Identificar picos por país
+picos <- dados_top_paises %>%
+  group_by(country) %>%
+  filter(ST.INT.RCPT.CD == max(ST.INT.RCPT.CD, na.rm = TRUE)) %>%
+  ungroup()
+
+# Função para formatar valores
+format_bilhao_trilhao <- function(x) {
+  ifelse(x >= 1e12,
+         paste0("$", round(x / 1e12, 1), "T"),
+         paste0("$", round(x / 1e9, 1), "B"))
+}
+
+# Gerar paleta com 10 cores distintas (usando Set3 + ajuste de contraste)
+cores_distintas <- c("#1b9e77", "#d95f02", "#7570b3", "#e7298a", "#66a61e",
+                     "#e6ab02", "#a6761d", "#666666", "#1f78b4", "#b2df8a")
+
+# CORTE TRANSVERSAL
+dadosreceipt2018 <- WDI(country = "all",
+                        indicator = "ST.INT.RCPT.CD",
+                        start = 2018, end = 2018)
+
+# Filtrar apenas países reais
+info_paises <- WDI_data$country
+paises_reais <- info_paises %>%
+  filter(region != "Aggregates") %>%
+  pull(iso2c)
+
+dados_paises_reais <- dadosreceipt2018 %>%
+  filter(iso2c %in% paises_reais,
+         !is.na(ST.INT.RCPT.CD))
+
+# Selecionar os 20 países com maior receita
+top_20_receitas <- dados_paises_reais %>%
+  arrange(desc(ST.INT.RCPT.CD)) %>%
+  slice_head(n = 20) %>%
+  mutate(destacar = ifelse(row_number() <= 3, "Top 3", "Outros"))
+# SÉRIE TEMPORAL
+dadosreceiptbr <- WDI(country = 'BR',
+                      indicator = 'ST.INT.RCPT.CD')
+# Filtrar de 1995 até 2020
+dadosreceiptbr <- dadosreceiptbr %>%
+  filter(year >= 1995 & year <= 2020)
+
+# Identificar ano de maior e menor receita
+ponto_max <- dadosreceiptbr %>%
+  filter(ST.INT.RCPT.CD == max(ST.INT.RCPT.CD, na.rm = TRUE))
+
+ponto_min <- dadosreceiptbr %>%
+  filter(ST.INT.RCPT.CD == min(ST.INT.RCPT.CD, na.rm = TRUE))
+
+# Função para formatar valores com B (bilhão) ou T (trilhão)
+formatar_valor <- function(x) {
+  ifelse(x >= 1e12,
+         paste0("$", round(x/1e12, 1), "T"),
+         paste0("$", round(x/1e9, 1), "B"))
+}
+```
+
+## Receita do turismo internacional (Em Dólar)
+
+*A variável escolhida foi a* receita do turismo internacional, medida em dólares correntes (US\$), com o código ST.INT.RCPT.CD.\*\* Ela representa o total de dinheiro que um país recebe de turistas estrangeiros, abrangendo despesas com hospedagem, alimentação, transporte interno, lazer e compras. Esse indicador é importante para entender o impacto econômico do turismo em diferentes países.
+
+*A fonte dos dados é o Banco Mundial, por meio da plataforma WDI (World Development Indicators).* Essa base reúne estatísticas econômicas, sociais e ambientais confiáveis de mais de 200 países, sendo amplamente utilizada por governos, pesquisadores e organizações internacionais para análise e formulação de políticas públicas.
+
+A série histórica analisada vai de 1995 a 2020, permitindo observar tendências de longo prazo e impactos de eventos globais, como a crise financeira de 2008, a Copa do Mundo de 2014 (no Brasil) e a pandemia de Covid-19 em 2020. Além disso, exploramos os países com maiores receitas acumuladas e os destaques do ano de 2018 em corte transversal.
+
+## Gráfico em Painel – Evolução da receita internacional do turismo mundial:
+
+O gráfico em painel mostra a evolução da receita do turismo internacional nos 10 países que mais arrecadaram entre 1995 e 2020. Cada linha representa a trajetória de um país, permitindo comparar tendências, padrões de crescimento e os impactos de eventos globais sobre o setor turístico.
+
+Os dados são do Banco Mundial (WDI) e indicam, em dólares correntes, quanto cada país recebeu de turistas estrangeiros, refletindo a importância econômica do turismo internacional.
+
+Destacam-se picos de arrecadação que variam entre os países. Os EUA lideram de forma consistente, enquanto França, Espanha e China apresentam crescimento expressivo ao longo do tempo, reforçando sua relevância como destinos globais.
+
+Crises globais também são visíveis no gráfico: há quedas notáveis em 2008 (crise financeira) e, principalmente, em 2020 (pandemia da Covid-19), mostrando a vulnerabilidade do setor a choques externos.
+
+O uso de cores personalizadas e rótulos nos picos facilita a leitura e torna o gráfico mais atrativo, sendo ideal para apresentações e análises visuais eficientes.
+
+```{r}
+#| label: graficodadosempainel
+#| warning: false
+#| echo: false
+
+ggplot(dados_top_paises, aes(x = year, y = ST.INT.RCPT.CD, group = country, color = country)) +
+  
+  # Linhas de tendência
+  geom_line(size = 1.4) +
+  
+  # Pontos de pico
+  geom_point(data = picos, aes(x = year, y = ST.INT.RCPT.CD), size = 2.2, shape = 21, fill = "white", stroke = 1.5) +
+  
+  # Rótulos nos picos com cor correspondente
+  geom_label_repel(
+    data = picos,
+    aes(label = paste0(country, "\n", year), fill = country),
+    color = "white",
+    fontface = "bold",
+    size = 3.3,
+    box.padding = 0.45,
+    point.padding = 0.8,
+    segment.color = "grey50",
+    show.legend = FALSE,
+    max.overlaps = Inf
+  ) +
+  
+  scale_color_manual(values = cores_distintas) +
+  scale_fill_manual(values = cores_distintas) +
+  
+  scale_y_continuous(labels = format_bilhao_trilhao, expand = expansion(mult = c(0, 0.1))) +
+  scale_x_continuous(breaks = seq(1995, 2020, by = 5)) +
+  
+  labs(
+    title = "Evolução da Receita do Turismo Internacional — Top 10 Países",
+    subtitle = "1995 a 2020 — Destaques de pico de arrecadação",
+    x = "Ano",
+    y = "Receita Internacional",
+    caption = "Fonte: Banco Mundial (WDI) • Indicador: ST.INT.RCPT.CD"
+  ) +
+  
+  theme_minimal(base_family = "Arial") +
+  theme(
+    plot.title = element_text(size = 20, face = "bold", hjust = 0.5, color = "#2E7D32"),
+    plot.subtitle = element_text(size = 13, hjust = 0.5, color = "#555555"),
+    axis.title.x = element_text(size = 12, face = "bold", margin = margin(t = 10)),
+    axis.title.y = element_text(size = 12, face = "bold", margin = margin(r = 10)),
+    axis.text = element_text(size = 10),
+    panel.grid.major = element_line(color = "grey90"),
+    panel.grid.minor = element_blank(),
+    plot.background = element_rect(fill = "#fefefe", color = "black"),
+    panel.background = element_rect(fill = "#fefefe", color = NA),
+    plot.caption = element_text(size = 9.5, color = "grey40", hjust = 1),
+    legend.position = "none"  # REMOVE legenda dos países
+  ) +
+  
+  coord_cartesian(ylim = c(0, max(dados_top_paises$ST.INT.RCPT.CD) * 1.1))
+
+```
+
+## Grafico de dados de Corte Transversal -Top 20 países que mais obtiveram receita do turismo em 2018:
+
+O gráfico mostra os 20 países que mais arrecadaram com turismo internacional em 2018, permitindo uma comparação direta entre eles nesse ano específico.
+
+Os dados são do Banco Mundial (indicador ST.INT.RCPT.CD) e representam, em dólares correntes, o total recebido de turistas estrangeiros — uma métrica reconhecida para avaliar o peso do turismo nas economias nacionais.
+
+Os Estados Unidos lideram com ampla vantagem, seguidos por Espanha e França, que se destacam pelo forte apelo cultural e infraestrutura turística. Também figuram no topo países como Tailândia, Reino Unido e Austrália, mostrando a diversidade regional entre os principais destinos.
+
+Chama a atenção a ausência de países que sediaram grandes eventos, como a Rússia em 2018, indicando que esses eventos nem sempre resultam em aumentos significativos na receita, especialmente quando o gasto médio por turista é baixo.
+
+O gráfico se destaca pelo visual limpo e informativo, com rótulos claros e uso de cores graduais, facilitando a leitura e a comparação entre os países.
+
+```{r}
+#| label: graficocortetransversal
+#| warning: false
+#| echo: false
+
+ggplot(top_20_receitas, aes(x = reorder(country, ST.INT.RCPT.CD),
+                                             y = ST.INT.RCPT.CD,
+                                             fill = reorder(country, ST.INT.RCPT.CD))) +
+  geom_col(width = 0.6, show.legend = FALSE) +
+  geom_text(aes(label = paste0("$", round(ST.INT.RCPT.CD / 1e9, 1), "B")),
+            hjust = -0.1, size = 3.8, color = "#333333", fontface = "bold") +
+  coord_flip() +
+  scale_y_continuous(labels = dollar_format(prefix = "$", scale = 1e-9, suffix = "B"),
+                     expand = expansion(mult = c(0, 0.18))) +
+  scale_fill_manual(values = colorRampPalette(c("#D0F0C0", "#81C784"))(20)) +
+  labs(
+    title = "Top 20 Países com Maior Receita de Turismo Internacional (2018)",
+    subtitle = "Em bilhões de dólares (USD)",
+    x = NULL,
+    y = "Receita de Turismo",
+    caption = "Fonte: World Development Indicators (WDI) | Indicador: ST.INT.RCPT.CD"
+  ) +
+  theme_minimal(base_size = 15) +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 18, color = "#2E7D32"),
+    plot.subtitle = element_text(hjust = 0.5, size = 13, color = "#4F4F4F"),
+    axis.text.x = element_text(size = 11),
+    axis.text.y = element_text(size = 12, face = "bold"),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(color = "#E0E0E0"),
+    plot.caption = element_text(size = 9.5, color = "gray40", hjust = 1)
+  )
+```
+
+## Gráfico de dados de Série Temporal - Receita do turismo no Brasil (1995-Atual)
+
+O gráfico mostra a evolução da receita gerada pelo turismo internacional no Brasil de 1995 até os dias atuais, com destaque visual para os anos de maior e menor arrecadação.
+
+A área preenchida em verde e a linha principal evidenciam as variações ao longo do tempo, com anotações específicas para eventos marcantes, como a **Crise de 2008**, a **Copa do Mundo de 2014** e a **pandemia de Covid-19 em 2020**, que impactaram diretamente o setor.
+
+Pontos de pico e queda são destacados com cores e rótulos, facilitando a identificação dos momentos mais relevantes. A Copa de 2014, por exemplo, aparece como um marco visual, reforçando o impacto de grandes eventos na economia do turismo.
+
+Os dados utilizados vêm do Banco Mundial (WDI) e medem, em dólares correntes, quanto o Brasil arrecadou com visitantes internacionais.
+
+```{r}
+#| label: graficoserietemporal
+#| warning: false
+#| echo: false
+
+ggplot(dadosreceiptbr, aes(x = year, y = ST.INT.RCPT.CD)) +
+  
+  # Área preenchida (agora com cor verde suave)
+  geom_area(fill = "#cce5cc", alpha = 0.6) +
+  
+  # Linha principal (espessura aumentada e cor ajustada para verde)
+  geom_line(color = "#66c2a5", size = 1.5) +
+  
+  # Destaques máximo e mínimo
+  geom_point(data = ponto_max, aes(x = year, y = ST.INT.RCPT.CD), color = "limegreen", size = 4) +
+  geom_point(data = ponto_min, aes(x = year, y = ST.INT.RCPT.CD), color = "red", size = 4) +
+  
+  # Anotações dos pontos
+  geom_text(data = ponto_max, aes(label = paste0(year, "\n", formatar_valor(ST.INT.RCPT.CD))),
+            vjust = -1, hjust = 0.5, color = "darkgreen", fontface = "bold", size = 4) +
+  geom_text(data = ponto_min, aes(label = paste0(year, "\n", formatar_valor(ST.INT.RCPT.CD))),
+            vjust = 1.5, hjust = 0.5, color = "red4", fontface = "bold", size = 4) +
+  
+  # Anotação especial para a Copa de 2014 (agora na mesma altura dos outros)
+  geom_vline(xintercept = 2014, linetype = "dashed", color = "forestgreen", size = 1) +
+  annotate("text", x = 2014, y = max(dadosreceiptbr$ST.INT.RCPT.CD, na.rm = TRUE)*0.2,
+           label = "Copa do Mundo 2014", color = "forestgreen", size = 5, angle = 90, vjust = -0.5, fontface = "bold") +
+  
+  # Marcar também eventos anteriores se quiser (como Crise 2008 e Covid 2020)
+  geom_vline(xintercept = 2008, linetype = "dotted", color = "grey40", size = 0.8) +
+  geom_vline(xintercept = 2020, linetype = "dotted", color = "grey40", size = 0.8) +
+  annotate("text", x = 2008, y = max(dadosreceiptbr$ST.INT.RCPT.CD, na.rm = TRUE)*0.2,
+           label = "Crise 2008", color = "black", size = 5, angle = 90, vjust = -0.5, fontface = "bold") +
+  annotate("text", x = 2020, y = max(dadosreceiptbr$ST.INT.RCPT.CD, na.rm = TRUE)*0.2,
+           label = "Covid-19", color = "black", size = 5, angle = 90, vjust = -0.5, fontface = "bold") +
+  
+  # Escalas e limites
+  scale_y_continuous(labels = formatar_valor, expand = expansion(mult = c(0, 0.15))) +
+  scale_x_continuous(breaks = seq(1995, max(dadosreceiptbr$year), by = 5),
+                     expand = expansion(mult = c(0.01, 0.05))) +
+  
+  # Títulos e legendas
+  labs(
+    title = "Evolução da Receita do Turismo Internacional - Brasil",
+    subtitle = "De 1995 até hoje, destacando eventos históricos",
+    x = "Ano",
+    y = "Receita do Turismo Internacional",
+    caption = "Fonte: Banco Mundial via WDI"
+  ) +
+  
+  # Tema bonito e clean
+  theme_minimal(base_family = "Arial") +
+  theme(
+    plot.title = element_text(size = 24, face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(size = 16, hjust = 0.5, margin = margin(b = 10)),
+    axis.title.x = element_text(size = 12, face = "bold", margin = margin(t = 10)),
+    axis.title.y = element_text(size = 12, face = "bold", margin = margin(r = 10)),
+    axis.text = element_text(size = 10),
+    panel.grid.major = element_line(color = "grey90"),
+    panel.grid.minor = element_blank(),
+    plot.background = element_rect(fill = "#f9f9f9", color = NA),
+    panel.background = element_rect(fill = "#f9f9f9", color = NA),
+    axis.line = element_line(color = "grey80"),
+    plot.caption = element_text(size = 9, color = "grey50", hjust = 1)
+  )
+```
