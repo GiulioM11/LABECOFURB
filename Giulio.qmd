@@ -164,7 +164,7 @@ ggplot(dados_top_paises, aes(x = year, y = ST.INT.RCPT.CD, group = country, colo
   
   theme_minimal(base_family = "Arial") +
   theme(
-    plot.title = element_text(size = 20, face = "bold", hjust = 0.5, color = "#2E7D32"),
+    plot.title = element_text(size = 15, face = "bold", hjust = 0.5, color = "#2E7D32"),
     plot.subtitle = element_text(size = 13, hjust = 0.5, color = "#555555"),
     axis.title.x = element_text(size = 12, face = "bold", margin = margin(t = 10)),
     axis.title.y = element_text(size = 12, face = "bold", margin = margin(r = 10)),
@@ -217,7 +217,7 @@ ggplot(top_20_receitas, aes(x = reorder(country, ST.INT.RCPT.CD),
   ) +
   theme_minimal(base_size = 15) +
   theme(
-    plot.title = element_text(hjust = 0.5, face = "bold", size = 18, color = "#2E7D32"),
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 15, color = "#2E7D32"),
     plot.subtitle = element_text(hjust = 0.5, size = 13, color = "#4F4F4F"),
     axis.text.x = element_text(size = 11),
     axis.text.y = element_text(size = 12, face = "bold"),
@@ -263,7 +263,7 @@ ggplot(dadosreceiptbr, aes(x = year, y = ST.INT.RCPT.CD)) +
   # Anotação especial para a Copa de 2014 (agora na mesma altura dos outros)
   geom_vline(xintercept = 2014, linetype = "dashed", color = "forestgreen", size = 1) +
   annotate("text", x = 2014, y = max(dadosreceiptbr$ST.INT.RCPT.CD, na.rm = TRUE)*0.2,
-           label = "Copa do Mundo 2014", color = "forestgreen", size = 5, angle = 90, vjust = -0.5, fontface = "bold") +
+           label = "Copa do Mundo 2014", color = "forestgreen", size = 5, angle = 90, vjust = 0.1, fontface = "bold") +
   
   # Marcar também eventos anteriores se quiser (como Crise 2008 e Covid 2020)
   geom_vline(xintercept = 2008, linetype = "dotted", color = "grey40", size = 0.8) +
@@ -290,7 +290,7 @@ ggplot(dadosreceiptbr, aes(x = year, y = ST.INT.RCPT.CD)) +
   # Tema bonito e clean
   theme_minimal(base_family = "Arial") +
   theme(
-    plot.title = element_text(size = 24, face = "bold", hjust = 0.5),
+    plot.title = element_text(size = 15, face = "bold", hjust = 0.5),
     plot.subtitle = element_text(size = 16, hjust = 0.5, margin = margin(b = 10)),
     axis.title.x = element_text(size = 12, face = "bold", margin = margin(t = 10)),
     axis.title.y = element_text(size = 12, face = "bold", margin = margin(r = 10)),
