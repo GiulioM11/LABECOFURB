@@ -8,298 +8,198 @@ editor: visual
 #| label: load-packages
 #| include: false
 
-library(WDI)
-library(ggplot2)
-library(dplyr)
+library(GetBCBData)
+library(tidyverse)
+library(gganimate)
+library(gifski)
 library(scales)
-library(viridis)
-library(ggrepel)
+library(lubridate)
+library(zoo)
 
-options(scipen = 999) # REMOVER A NOT. CIENT.
-# DADOS EM PAINEL
+# OBTER DADOS DO INPC
+my.id <- c(INPC = 188)
 
-dadosreceipt <- WDI(country = 'all', indicator = 'ST.INT.RCPT.CD')
+df.bcb <- gbcbd_get_series(
+  id = my.id,
+  first.date = '1979-04-30',
+  last.date = Sys.Date(),
+  format.data = 'long',
+  use.memoise = TRUE,
+  cache.path = tempdir(),
+  do.parallel = FALSE
+)
 
-# Filtrar países válidos
-paises_lista <- WDI_data$country %>%
-  filter(region != "Aggregates") %>%
-  pull(iso2c)
+# MÉDIA MÓVEL
+df.bcb <- df.bcb %>%
+  arrange(ref.date) %>%
+  mutate(
+    media_movel = zoo::rollmean(value, k = 6, fill = NA, align = "right")
+  )
 
-# Limpar e preparar dados
-dados_limpos <- dadosreceipt %>%
-  filter(iso2c %in% paises_lista) %>%
-  filter(!is.na(ST.INT.RCPT.CD)) %>%
-  filter(year >= 1995 & year <= 2020)  # Considerando até 2020
+# ANOTAÇÕES HISTÓRICAS
+anotacoes <- tribble(
+  ~ref.date,         ~value, ~label,
+  as.Date("1990-03-01"), 82.39, "📌 Plano Collor: hiperinflação\natinge pico de 82,39%",
+  as.Date("1994-07-01"), 6.84, "📌 Plano Real: controle da inflação",
+  as.Date("2002-12-01"), 3.02, "📌 Eleição presidencial e\ncrise cambial",
+  as.Date("2015-01-01"), 1.48, "📌 Recessão econômica e tarifaço",
+  as.Date("2020-04-01"), 0.31, "📌 Início da pandemia COVID-19"
+)
 
-# Top 10 países por receita acumulada
-top_paises <- dados_limpos %>%
-  group_by(country) %>%
-  summarise(receita_total = sum(ST.INT.RCPT.CD, na.rm = TRUE)) %>%
-  arrange(desc(receita_total)) %>%
-  slice_head(n = 10)
+# DADOS LONGOS PARA USAR LINHAS COM LEGENDA
+df.long <- df.bcb %>%
+  select(ref.date, value, media_movel) %>%
+  pivot_longer(cols = c(value, media_movel), names_to = "tipo", values_to = "valor") %>%
+  mutate(
+    tipo = recode(tipo,
+                  "value" = "INPC mensal (%)",
+                  "media_movel" = "Média móvel 6 meses")
+  )
 
-# Dados somente dos top 10
-dados_top_paises <- dados_limpos %>%
-  filter(country %in% top_paises$country)
+#| label: render-gif
+#| echo: false
+#| warning: false
 
-# Identificar picos por país
-picos <- dados_top_paises %>%
-  group_by(country) %>%
-  filter(ST.INT.RCPT.CD == max(ST.INT.RCPT.CD, na.rm = TRUE)) %>%
-  ungroup()
-
-# Função para formatar valores
-format_bilhao_trilhao <- function(x) {
-  ifelse(x >= 1e12,
-         paste0("$", round(x / 1e12, 1), "T"),
-         paste0("$", round(x / 1e9, 1), "B"))
-}
-
-# Gerar paleta com 10 cores distintas (usando Set3 + ajuste de contraste)
-cores_distintas <- c("#1b9e77", "#d95f02", "#7570b3", "#e7298a", "#66a61e",
-                     "#e6ab02", "#a6761d", "#666666", "#1f78b4", "#b2df8a")
-
-# CORTE TRANSVERSAL
-dadosreceipt2018 <- WDI(country = "all",
-                        indicator = "ST.INT.RCPT.CD",
-                        start = 2018, end = 2018)
-
-# Filtrar apenas países reais
-info_paises <- WDI_data$country
-paises_reais <- info_paises %>%
-  filter(region != "Aggregates") %>%
-  pull(iso2c)
-
-dados_paises_reais <- dadosreceipt2018 %>%
-  filter(iso2c %in% paises_reais,
-         !is.na(ST.INT.RCPT.CD))
-
-# Selecionar os 20 países com maior receita
-top_20_receitas <- dados_paises_reais %>%
-  arrange(desc(ST.INT.RCPT.CD)) %>%
-  slice_head(n = 20) %>%
-  mutate(destacar = ifelse(row_number() <= 3, "Top 3", "Outros"))
-# SÉRIE TEMPORAL
-dadosreceiptbr <- WDI(country = 'BR',
-                      indicator = 'ST.INT.RCPT.CD')
-# Filtrar de 1995 até 2020
-dadosreceiptbr <- dadosreceiptbr %>%
-  filter(year >= 1995 & year <= 2020)
-
-# Identificar ano de maior e menor receita
-ponto_max <- dadosreceiptbr %>%
-  filter(ST.INT.RCPT.CD == max(ST.INT.RCPT.CD, na.rm = TRUE))
-
-ponto_min <- dadosreceiptbr %>%
-  filter(ST.INT.RCPT.CD == min(ST.INT.RCPT.CD, na.rm = TRUE))
-
-# Função para formatar valores com B (bilhão) ou T (trilhão)
-formatar_valor <- function(x) {
-  ifelse(x >= 1e12,
-         paste0("$", round(x/1e12, 1), "T"),
-         paste0("$", round(x/1e9, 1), "B"))
-}
 ```
 
-## Receita do turismo internacional (Em Dólar)
+## Índice nacional de preços ao consumidor (IPCA)
 
-*A variável escolhida foi a* receita do turismo internacional, medida em dólares correntes (US\$), com o código ST.INT.RCPT.CD.\*\* Ela representa o total de dinheiro que um país recebe de turistas estrangeiros, abrangendo despesas com hospedagem, alimentação, transporte interno, lazer e compras. Esse indicador é importante para entender o impacto econômico do turismo em diferentes países.
+**O que é o IPCA?**\
+O IPCA (Índice Nacional de Preços ao Consumidor Amplo) é o principal indicador da inflação no Brasil. Ele mede a variação de preços de uma cesta de bens e serviços consumidos por famílias com renda de 1 a 40 salários mínimos. É utilizado pelo Banco Central para definir a política monetária, metas de inflação e reajustes econômicos.
 
-*A fonte dos dados é o Banco Mundial, por meio da plataforma WDI (World Development Indicators).* Essa base reúne estatísticas econômicas, sociais e ambientais confiáveis de mais de 200 países, sendo amplamente utilizada por governos, pesquisadores e organizações internacionais para análise e formulação de políticas públicas.
+**Instituição Responsável**\
+O índice é calculado e publicado mensalmente pelo IBGE desde 1980. O Banco Central utiliza o IPCA para o regime de metas de inflação.
 
-A série histórica analisada vai de 1995 a 2020, permitindo observar tendências de longo prazo e impactos de eventos globais, como a crise financeira de 2008, a Copa do Mundo de 2014 (no Brasil) e a pandemia de Covid-19 em 2020. Além disso, exploramos os países com maiores receitas acumuladas e os destaques do ano de 2018 em corte transversal.
+**Composição do IPCA**\
+A cesta de consumo inclui itens de:
 
-## Gráfico em Painel – Evolução da receita internacional do turismo mundial:
+-   Alimentação e bebidas
 
-O gráfico em painel mostra a evolução da receita do turismo internacional nos 10 países que mais arrecadaram entre 1995 e 2020. Cada linha representa a trajetória de um país, permitindo comparar tendências, padrões de crescimento e os impactos de eventos globais sobre o setor turístico.
+-   Habitação
 
-Os dados são do Banco Mundial (WDI) e indicam, em dólares correntes, quanto cada país recebeu de turistas estrangeiros, refletindo a importância econômica do turismo internacional.
+-   Transportes
 
-Destacam-se picos de arrecadação que variam entre os países. Os EUA lideram de forma consistente, enquanto França, Espanha e China apresentam crescimento expressivo ao longo do tempo, reforçando sua relevância como destinos globais.
+-   Saúde e cuidados pessoais
 
-Crises globais também são visíveis no gráfico: há quedas notáveis em 2008 (crise financeira) e, principalmente, em 2020 (pandemia da Covid-19), mostrando a vulnerabilidade do setor a choques externos.
+-   Educação
 
-O uso de cores personalizadas e rótulos nos picos facilita a leitura e torna o gráfico mais atrativo, sendo ideal para apresentações e análises visuais eficientes.
+-   Vestuário
+
+-   Despesas pessoais
+
+-   Comunicação
+
+    Cada grupo possui peso definido pela POF (Pesquisa de Orçamentos Familiares).\
+    Abrange 16 regiões metropolitanas, incluindo São Paulo, Rio de Janeiro, Brasília, Recife, Salvador, Curitiba, Porto Alegre, entre outras.
+
+**Para que serve o IPCA?**
+
+-   Orienta decisões de taxa Selic (pelo COPOM)
+
+-   Base para metas de inflação (definidas pelo CMN)
+
+-   Utilizado para reajustes salariais, contratos e benefícios
+
+-   Referência para análises econômicas e poder de compra
+
+**Evolução Histórica**
+
+-   Anos 1980-1990: hiperinflação, com picos acima de 80% ao mês
+
+-   1994: estabilidade com o Plano Real
+
+-   2000+: flutuações entre 3% e 10% ao ano, com crises pontuais (2002, 2015, 2021)
+
+**Fórmula Geral Simplificada**
+
+IPCA=(∑(Pi⋅Qi)∑(Pi−1⋅Qi)−1)IPCA = \left(\frac{\sum (P_i \cdot Q_i)}{\sum (P_{i-1} \cdot Q_i)} - 1\right)IPCA=(∑(Pi−1​⋅Qi​)∑(Pi​⋅Qi​)​−1)
+
+Onde:
+
+-   PiP_iPi​: Preço no período atual
+
+-   Pi−1P_{i-1}Pi−1​: Preço no período anterior
+
+-   QiQ_iQi​: Quantidade ponderada do item
+
+**Conclusão**
+O IPCA é essencial para o monitoramento da inflação no Brasil. Serve de bússola para políticas econômicas, reajustes e análise do custo de vida, refletindo os ciclos históricos e desafios da economia brasileira.
+
+## Análise do Gráfico do INPC Mensal no Brasil (1979 até Hoje)
+
+O gráfico apresenta a evolução da inflação mensal medida pelo **INPC (Índice Nacional de Preços ao Consumidor)**, incluindo uma **média móvel de 6 meses** para suavizar variações e destacar tendências.
+
+### Principais pontos:
+
+-    **Período de alta inflação (fim dos anos 80 e início dos 90):** A inflação atingiu picos extremos, como no **Plano Collor (março/1990), quando chegou a 82,39% mensal**, evidenciando hiperinflação.
+
+-   **Estabilização pós-Plano Real (a partir de 1994):** O gráfico mostra queda abrupta e estabilização da inflação, refletindo o sucesso do Plano Real em controlar a inflação.
+
+-   **Oscilações moderadas e eventos pontuais:** A partir dos anos 2000, a inflação manteve-se relativamente baixa, mas eventos como a **eleição presidencial e crise cambial de 2002** e a **recessão econômica em 2015** causaram elevações temporárias.
+
+-   **Impacto da pandemia em 2020:** Houve uma queda acentuada da inflação mensal no início da pandemia COVID-19, provavelmente associada à retração da atividade econômica.
+
+### Interpretação visual:
+
+-    A **linha preta sólida** representa o INPC mensal, mostrando a volatilidade natural do índice.
+
+-   A **linha verde tracejada** mostra a média móvel de 6 meses, evidenciando a tendência subjacente com menos ruído.
+
+-   Os **pontos vermelhos** e textos destacam momentos econômicos relevantes que influenciaram diretamente a inflação, facilitando a correlação entre política econômica e variações inflacionárias.
 
 ```{r}
 #| label: graficodadosempainel
 #| warning: false
 #| echo: false
 
-ggplot(dados_top_paises, aes(x = year, y = ST.INT.RCPT.CD, group = country, color = country)) +
-  
-  # Linhas de tendência
-  geom_line(size = 1.4) +
-  
-  # Pontos de pico
-  geom_point(data = picos, aes(x = year, y = ST.INT.RCPT.CD), size = 2.2, shape = 21, fill = "white", stroke = 1.5) +
-  
-  # Rótulos nos picos com cor correspondente
-  geom_label_repel(
-    data = picos,
-    aes(label = paste0(country, "\n", year), fill = country),
-    color = "white",
-    fontface = "bold",
-    size = 3.3,
-    box.padding = 0.45,
-    point.padding = 0.8,
-    segment.color = "grey50",
-    show.legend = FALSE,
-    max.overlaps = Inf
+ggplot() +
+  geom_line(data = df.long, aes(x = ref.date, y = valor, color = tipo, linetype = tipo), size = 1.2) +
+  scale_color_manual(values = c(
+    "INPC mensal (%)" = "black",
+    "Média móvel 6 meses" = "forestgreen"
+  )) +
+  scale_linetype_manual(values = c(
+    "INPC mensal (%)" = "solid",
+    "Média móvel 6 meses" = "dashed"
+  )) +
+  geom_point(data = anotacoes, aes(x = ref.date, y = value), color = "red", size = 3) +
+  geom_text(
+    data = anotacoes,
+    aes(x = ref.date, y = value, label = label),
+    hjust = 0, vjust = -0.5, size = 4, color = "black", fontface = "bold", lineheight = 1.1
   ) +
-  
-  scale_color_manual(values = cores_distintas) +
-  scale_fill_manual(values = cores_distintas) +
-  
-  scale_y_continuous(labels = format_bilhao_trilhao, expand = expansion(mult = c(0, 0.1))) +
-  scale_x_continuous(breaks = seq(1995, 2020, by = 5)) +
-  
+  scale_x_date(
+    breaks = seq(from = as.Date("1980-01-01"), to = Sys.Date(), by = "10 years"),
+    date_labels = "%Y"
+  ) +
+  scale_y_continuous(
+    labels = label_number(suffix = "%", accuracy = 0.1),
+    expand = expansion(mult = c(0.05, 0.15))
+  ) +
   labs(
-    title = "Evolução da Receita do Turismo Internacional — Top 10 Países",
-    subtitle = "1995 a 2020 — Destaques de pico de arrecadação",
+    title = "📈 INPC no Brasil: Inflação Mensal com Destaques Históricos",
+    subtitle = "Evolução: {format(frame_along, '%B de %Y')} | Inclui média móvel de 6 meses",
+    caption = "Fonte: Banco Central do Brasil (SGS 188) • Visualização animada",
     x = "Ano",
-    y = "Receita Internacional",
-    caption = "Fonte: Banco Mundial (WDI) • Indicador: ST.INT.RCPT.CD"
+    y = "Variação mensal (%)",
+    color = "Indicadores",
+    linetype = "Indicadores"
   ) +
-  
-  theme_minimal(base_family = "Arial") +
+  theme_minimal(base_size = 14) +
   theme(
-    plot.title = element_text(size = 15, face = "bold", hjust = 0.5, color = "#2E7D32"),
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5, color = "#2C3E50"),
     plot.subtitle = element_text(size = 13, hjust = 0.5, color = "#555555"),
-    axis.title.x = element_text(size = 12, face = "bold", margin = margin(t = 10)),
-    axis.title.y = element_text(size = 12, face = "bold", margin = margin(r = 10)),
-    axis.text = element_text(size = 10),
-    panel.grid.major = element_line(color = "grey90"),
+    plot.caption = element_text(size = 9, hjust = 1, face = "italic"),
+    axis.title.y = element_text(size = 12),
     panel.grid.minor = element_blank(),
-    plot.background = element_rect(fill = "#fefefe", color = "black"),
-    panel.background = element_rect(fill = "#fefefe", color = NA),
-    plot.caption = element_text(size = 9.5, color = "grey40", hjust = 1),
-    legend.position = "none"  # REMOVE legenda dos países
+    legend.position = "top",
+    legend.title = element_text(face = "bold"),
+    legend.box.spacing = unit(0.3, "cm")
   ) +
-  
-  coord_cartesian(ylim = c(0, max(dados_top_paises$ST.INT.RCPT.CD) * 1.1))
+  transition_reveal(ref.date)
 
-```
-
-## Grafico de dados de Corte Transversal -Top 20 países que mais obtiveram receita do turismo em 2018:
-
-O gráfico mostra os 20 países que mais arrecadaram com turismo internacional em 2018, permitindo uma comparação direta entre eles nesse ano específico.
-
-Os dados são do Banco Mundial (indicador ST.INT.RCPT.CD) e representam, em dólares correntes, o total recebido de turistas estrangeiros — uma métrica reconhecida para avaliar o peso do turismo nas economias nacionais.
-
-Os Estados Unidos lideram com ampla vantagem, seguidos por Espanha e França, que se destacam pelo forte apelo cultural e infraestrutura turística. Também figuram no topo países como Tailândia, Reino Unido e Austrália, mostrando a diversidade regional entre os principais destinos.
-
-Chama a atenção a ausência de países que sediaram grandes eventos, como a Rússia em 2018, indicando que esses eventos nem sempre resultam em aumentos significativos na receita, especialmente quando o gasto médio por turista é baixo.
-
-O gráfico se destaca pelo visual limpo e informativo, com rótulos claros e uso de cores graduais, facilitando a leitura e a comparação entre os países.
-
-```{r}
-#| label: graficocortetransversal
-#| warning: false
+#| label: render-gif
 #| echo: false
-
-ggplot(top_20_receitas, aes(x = reorder(country, ST.INT.RCPT.CD),
-                                             y = ST.INT.RCPT.CD,
-                                             fill = reorder(country, ST.INT.RCPT.CD))) +
-  geom_col(width = 0.6, show.legend = FALSE) +
-  geom_text(aes(label = paste0("$", round(ST.INT.RCPT.CD / 1e9, 1), "B")),
-            hjust = -0.1, size = 3.8, color = "#333333", fontface = "bold") +
-  coord_flip() +
-  scale_y_continuous(labels = dollar_format(prefix = "$", scale = 1e-9, suffix = "B"),
-                     expand = expansion(mult = c(0, 0.18))) +
-  scale_fill_manual(values = colorRampPalette(c("#D0F0C0", "#81C784"))(20)) +
-  labs(
-    title = "Top 20 Países com Maior Receita de Turismo Internacional (2018)",
-    subtitle = "Em bilhões de dólares (USD)",
-    x = NULL,
-    y = "Receita de Turismo",
-    caption = "Fonte: World Development Indicators (WDI) | Indicador: ST.INT.RCPT.CD"
-  ) +
-  theme_minimal(base_size = 15) +
-  theme(
-    plot.title = element_text(hjust = 0.5, face = "bold", size = 15, color = "#2E7D32"),
-    plot.subtitle = element_text(hjust = 0.5, size = 13, color = "#4F4F4F"),
-    axis.text.x = element_text(size = 11),
-    axis.text.y = element_text(size = 12, face = "bold"),
-    panel.grid.major.y = element_blank(),
-    panel.grid.major.x = element_line(color = "#E0E0E0"),
-    plot.caption = element_text(size = 9.5, color = "gray40", hjust = 1)
-  )
-```
-
-## Gráfico de dados de Série Temporal - Receita do turismo no Brasil (1995-Atual)
-
-O gráfico mostra a evolução da receita gerada pelo turismo internacional no Brasil de 1995 até os dias atuais, com destaque visual para os anos de maior e menor arrecadação.
-
-A área preenchida em verde e a linha principal evidenciam as variações ao longo do tempo, com anotações específicas para eventos marcantes, como a **Crise de 2008**, a **Copa do Mundo de 2014** e a **pandemia de Covid-19 em 2020**, que impactaram diretamente o setor.
-
-Pontos de pico e queda são destacados com cores e rótulos, facilitando a identificação dos momentos mais relevantes. A Copa de 2014, por exemplo, aparece como um marco visual, reforçando o impacto de grandes eventos na economia do turismo.
-
-Os dados utilizados vêm do Banco Mundial (WDI) e medem, em dólares correntes, quanto o Brasil arrecadou com visitantes internacionais.
-
-```{r}
-#| label: graficoserietemporal
 #| warning: false
-#| echo: false
 
-ggplot(dadosreceiptbr, aes(x = year, y = ST.INT.RCPT.CD)) +
-  
-  # Área preenchida (agora com cor verde suave)
-  geom_area(fill = "#cce5cc", alpha = 0.6) +
-  
-  # Linha principal (espessura aumentada e cor ajustada para verde)
-  geom_line(color = "#66c2a5", size = 1.5) +
-  
-  # Destaques máximo e mínimo
-  geom_point(data = ponto_max, aes(x = year, y = ST.INT.RCPT.CD), color = "limegreen", size = 4) +
-  geom_point(data = ponto_min, aes(x = year, y = ST.INT.RCPT.CD), color = "red", size = 4) +
-  
-  # Anotações dos pontos
-  geom_text(data = ponto_max, aes(label = paste0(year, "\n", formatar_valor(ST.INT.RCPT.CD))),
-            vjust = -1, hjust = 0.5, color = "darkgreen", fontface = "bold", size = 4) +
-  geom_text(data = ponto_min, aes(label = paste0(year, "\n", formatar_valor(ST.INT.RCPT.CD))),
-            vjust = 1.5, hjust = 0.5, color = "red4", fontface = "bold", size = 4) +
-  
-  # Anotação especial para a Copa de 2014 (agora na mesma altura dos outros)
-  geom_vline(xintercept = 2014, linetype = "dashed", color = "forestgreen", size = 1) +
-  annotate("text", x = 2014, y = max(dadosreceiptbr$ST.INT.RCPT.CD, na.rm = TRUE)*0.2,
-           label = "Copa do Mundo 2014", color = "forestgreen", size = 5, angle = 90, vjust = 0.1, fontface = "bold") +
-  
-  # Marcar também eventos anteriores se quiser (como Crise 2008 e Covid 2020)
-  geom_vline(xintercept = 2008, linetype = "dotted", color = "grey40", size = 0.8) +
-  geom_vline(xintercept = 2020, linetype = "dotted", color = "grey40", size = 0.8) +
-  annotate("text", x = 2008, y = max(dadosreceiptbr$ST.INT.RCPT.CD, na.rm = TRUE)*0.2,
-           label = "Crise 2008", color = "black", size = 5, angle = 90, vjust = -0.5, fontface = "bold") +
-  annotate("text", x = 2020, y = max(dadosreceiptbr$ST.INT.RCPT.CD, na.rm = TRUE)*0.2,
-           label = "Covid-19", color = "black", size = 5, angle = 90, vjust = -0.5, fontface = "bold") +
-  
-  # Escalas e limites
-  scale_y_continuous(labels = formatar_valor, expand = expansion(mult = c(0, 0.15))) +
-  scale_x_continuous(breaks = seq(1995, max(dadosreceiptbr$year), by = 5),
-                     expand = expansion(mult = c(0.01, 0.05))) +
-  
-  # Títulos e legendas
-  labs(
-    title = "Evolução da Receita do Turismo Internacional - Brasil",
-    subtitle = "De 1995 até hoje, destacando eventos históricos",
-    x = "Ano",
-    y = "Receita do Turismo Internacional",
-    caption = "Fonte: Banco Mundial via WDI"
-  ) +
-  
-  # Tema bonito e clean
-  theme_minimal(base_family = "Arial") +
-  theme(
-    plot.title = element_text(size = 15, face = "bold", hjust = 0.5),
-    plot.subtitle = element_text(size = 16, hjust = 0.5, margin = margin(b = 10)),
-    axis.title.x = element_text(size = 12, face = "bold", margin = margin(t = 10)),
-    axis.title.y = element_text(size = 12, face = "bold", margin = margin(r = 10)),
-    axis.text = element_text(size = 10),
-    panel.grid.major = element_line(color = "grey90"),
-    panel.grid.minor = element_blank(),
-    plot.background = element_rect(fill = "#f9f9f9", color = NA),
-    panel.background = element_rect(fill = "#f9f9f9", color = NA),
-    axis.line = element_line(color = "grey80"),
-    plot.caption = element_text(size = 9, color = "grey50", hjust = 1)
-  )
 ```
